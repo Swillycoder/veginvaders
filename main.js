@@ -36,14 +36,14 @@ window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
 const images = {
-    bgImg: 'http://localhost:8000/bg.png',
-    tomatoImg: 'http://localhost:8000/tomato.png',
-    cauliImg: 'http://localhost:8000/cauli.png',
-    cabbageImg: 'http://localhost:8000/cabbage.png',
-    pumpkinImg: 'http://localhost:8000/pumpkin.png',
-    turnipImg: 'http://localhost:8000/turnip.png',
-    introImg: 'http://localhost:8000/vegintro.png',
-    bombardImg: 'http://localhost:8000/bombard.png',
+    bgImg: 'bg.png',
+    tomatoImg: 'tomato.png',
+    cauliImg: 'cauli.png',
+    cabbageImg: 'cabbage.png',
+    pumpkinImg: 'pumpkin.png',
+    turnipImg: 'turnip.png',
+    introImg: 'vegintro.png',
+    bombardImg: 'bombard.png',
 }
 
 const loadImage = (src) => {
