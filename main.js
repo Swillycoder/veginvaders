@@ -13,7 +13,7 @@ class Vec {
   static dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 }
 
-// ---- Canvas setup ----
+// Canvas setup
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 let DPR = Math.max(1, window.devicePixelRatio || 1);
@@ -35,6 +35,8 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
+canvas.style.touchAction = "none";
+
 const images = {
     bgImg: 'bg.png',
     tomatoImg: 'tomato.png',
@@ -44,6 +46,11 @@ const images = {
     turnipImg: 'turnip.png',
     introImg: 'vegintro.png',
     bombardImg: 'bombard.png',
+    prismPetalImg: 'prism.png',
+    blackHoleImg: 'blackhole.png',
+    goldImg: 'golden.png',
+    gameOverBg: 'gameover.png',
+    transparencyImg: 'glass.png',
 }
 
 const loadImage = (src) => {
@@ -68,12 +75,13 @@ async function loadAllImages(imageSources) {
     return loadedImages;
 }
 
-// ---- Game objects ----
+// CLASSES
 class Enemy {
-  constructor(x, y, r=12, speed=120){
+  constructor(x, y, r=12, speed=80){
     this.pos = new Vec(x,y);
     this.r = r;
     this.speed = speed; // pixels per second
+    this.maxSpeed = 150;
     this.dead = false;
     
     this.imgs = [loadedImages.cauliImg,loadedImages.cabbageImg,
@@ -83,7 +91,7 @@ class Enemy {
     this.image = this.imgs[this.type];
 
     // Assign score per type
-    this.score = [10, 20, 30, 40][this.type]; // cauli=10, cabbage=20, etc.
+    this.score = [15, 30, 45, 60][this.type];
 
     this.killedByExplosion = false;
   }
@@ -95,7 +103,11 @@ class Enemy {
       this.dead = true;
       this.killedByExplosion = false;
       lives -= 1;
-    } // fell off screen
+    }
+
+    if (this.speed > this.maxSpeed) {
+        this.speed = this.maxSpeed;
+    }
 
   }
 
@@ -212,17 +224,49 @@ class Explosion {
 
     // Apply damage once
     if (!this._applied) {
+
+      // --- enemies ---
       for (let e of enemies) {
         if (!e.dead && Vec.dist(e.pos, this.pos) <= this.maxRadius + e.r) {
           e.dead = true;
-          e.killedByExplosion = true; 
+          e.killedByExplosion = true;
         }
       }
+
+      // --- collectibles ---
+      for (let i = collectibles.length - 1; i >= 0; i--) {
+        const c = collectibles[i];
+        const cRadius = Math.max(c.width, c.height) / 2;
+        const cPos = new Vec(c.x + c.width / 2, c.y + c.height / 2);
+
+        if (Vec.dist(this.pos, cPos) <= this.maxRadius + cRadius) {
+
+          if (c.type === "gold") {
+            floatingTexts.push(
+              new FloatingText("250", cPos.x, cPos.y, "gold", "black")
+            );
+            c.applyEffect();          // apply slow/remove effect
+            collectibles.splice(i, 1); 
+            console.log("Gold collected! Score =", score);
+
+          } else {
+            floatingTexts.push(
+              new FloatingText(c.type.toUpperCase(), cPos.x, cPos.y, "gold", "black")
+            );
+
+            c.applyEffect();          // apply slow/remove effect
+            collectibles.splice(i, 1); // remove collectible
+          }
+        }
+      }
+
       this._applied = true;
     }
 
     // Update particles
-    for (let p of this.particles) p.update(dt);
+    for (let p of this.particles) {
+      p.update(dt);
+    }
 
     // Mark dead when all particles are dead AND shockwave finished
     const particlesDead = this.particles.every(p => p.dead);
@@ -291,17 +335,136 @@ class Player {
   }
 }
 
+class Collectible {
+    constructor(type, x, y, movementMode = "sine") {
+        this.type = type;
+        this.movementMode = movementMode; // "sine" or "straight"
 
-// ---- Game state ----
+        this.width = 30;
+        this.height = 30;
+
+        this.x = x;
+        this.y = y;
+
+        // Sine wave parameters
+        this.baseX = x;
+        this.angle = 0;
+        this.waveSpeed = 0.05;
+        this.waveAmplitude = 40;
+
+        this.speedY = 2;
+
+        switch(this.type) {
+            case "slow":
+                this.image = loadedImages.prismPetalImg;
+                break;
+            case "remove":
+                this.image = loadedImages.blackHoleImg;
+                break;
+            case "gold":
+                this.image = loadedImages.goldImg;
+                this.movementMode = "straight";
+                break;
+        }
+
+        this.width = this.image.width;
+        this.height = this.image.height;
+    }
+
+    update() {
+        this.y += this.speedY;
+
+        if (this.movementMode === "sine") {
+            this.angle += this.waveSpeed;
+            this.x = this.baseX + Math.sin(this.angle) * this.waveAmplitude;
+        }
+    }
+
+    draw(ctx) {
+        ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
+    }
+
+    applyEffect() {
+        switch(this.type) {
+            case "slow":
+                enemySpeedMultiplier *= 0.9;
+                for (let e of [...baseEnemies, ...extraEnemies]) {
+                    e.speed *= 0.9;
+                }
+                break;
+
+            case "remove":
+                const aliveExtra = extraEnemies.filter(e => !e.dead);
+                if (aliveExtra.length === 0) return;
+
+                const count = Math.min(aliveExtra.length, 1 + Math.floor(Math.random() * 3));
+                for (let i = 0; i < count; i++) {
+                    const index = Math.floor(Math.random() * aliveExtra.length);
+                    const enemy = aliveExtra[index];
+                    extraEnemies.splice(extraEnemies.indexOf(enemy), 1);
+                    aliveExtra.splice(index, 1);
+                    maxExtraEnemies -= 1;
+                }
+                break;
+            case "gold":
+                score += 250;
+                console.log(`Gold collected! Score is now: ${score}`);
+                break;
+        }
+    }
+}
+
+class FloatingText {
+    constructor(text, x, y, color = "white", stroke = "white") {
+        this.text = text;
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.stroke = stroke;
+        this.opacity = 1;
+        this.life = 150; 
+        this.done = false;
+    }
+
+    update() {
+        this.y -= 0.5;   
+        this.opacity -= 0.002;  
+        this.life--;
+
+        if (this.life <= 0) {
+            this.done = true;
+            this.opacity = 0;
+        }  
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.globalAlpha = this.opacity;
+        ctx.fillStyle = this.color;
+        ctx.strokeStyle = this.stroke;
+        ctx.font = "50px pixelPurl";
+        ctx.textAlign = "center";
+        ctx.lineWidth = 1.5;
+        ctx.fillText(this.text, this.x, this.y);
+        ctx.strokeText(this.text, this.x, this.y)
+        ctx.restore();
+    }
+}
+
+
+// Game state
 let player;
 const enemies = [];
 const projectiles = [];
 const explosions = [];
+let collectibles = [];
+let nextCollectibleTime = 0;
 
 let gameState = "introScreen";
 let loadedImages;
 let spawnTimer = 0;
 const spawnInterval = 1.1;
+let firstSpawn = true;
 
 // DIFFICULTY CONTROLS
 let difficultyTimer = 0;
@@ -311,12 +474,14 @@ let enemySpeedIncrease = 10;
 let enemySpeedMultiplier = 1;
 const baseEnemies = [];
 const extraEnemies = [];
-const allEnemies = [...baseEnemies, ...extraEnemies];
+//const allEnemies = [...baseEnemies, ...extraEnemies];
 let score = 0;
 let lives = 3;
+let floatingTexts = [];
 
 let maxExtraEnemies = 0;
 let lastTime = performance.now();
+let nextGoldTime = 0;
 
 function gameLoop(now) {
     const dt = Math.min((now - lastTime) / 1000, 0.05);
@@ -340,23 +505,22 @@ function gameLoop(now) {
     requestAnimationFrame(gameLoop);
 }
 
-// ---- Spawning enemies ----
-// original base spawn (fixed)
+//FUNCTIONS
+// Spawning enemies
 function spawnBaseEnemy() {
     const x = 20 + Math.random() * (GAME_W - 40);
     const y = -20;
     const r = 15;
-    const speed = 80 + Math.random() * 40; // random speed
+    const speed = (80 + Math.random() * 40) * enemySpeedMultiplier; // apply multiplier
     baseEnemies.push(new Enemy(x, y, r, speed));
 }
 
-// Spawn extra enemies (difficulty-controlled)
 function spawnExtraEnemy() {
     if (extraEnemies.length >= maxExtraEnemies) return;
     const x = 20 + Math.random() * (GAME_W - 40);
     const y = -20;
     const r = 15;
-    const speed = enemyBaseSpeed * (0.8 + Math.random() * 0.4); // random variation
+    const speed = enemyBaseSpeed * (0.8 + Math.random() * 0.4) * enemySpeedMultiplier;
     extraEnemies.push(new Enemy(x, y, r, speed));
 }
 
@@ -388,12 +552,156 @@ function resetGame() {
   enemies.length = 0;
   enemyBaseSpeed = 100;
   maxExtraEnemies = 0;
+  collectibles.length = 0;
+  player.angle = -Math.PI/2;
+  floatingTexts.length = 0;
+  projectiles.length = 0;
+  scheduleNextCollectible();
 }
 
-// ---- Main game screen ----
-function gameScreen(dt) {
-    // --- SPAWN LOGIC ---
+function scheduleNextCollectible() {
+    if (firstSpawn) {
+        // First collectible spawns after 20 seconds
+        nextCollectibleTime = performance.now() + 20000;
+        firstSpawn = false;
+    } else {
+        // All later collectibles: 10 sec + random 1–20 sec
+        nextCollectibleTime = performance.now() + 10000 + (Math.random() * 10000);
+    }
+}
 
+function updateCollectibleSpawner() {
+    const now = performance.now();
+
+    if (now >= nextCollectibleTime) {
+
+        // Randomly choose type
+        const type = Math.random() < 0.5 ? "slow" : "remove";
+
+        // Random x along the screen
+        const x = 100 + Math.random() * GAME_W * 0.66;
+        const y = -50;  // start above screen
+
+        collectibles.push(new Collectible(type, x, y));
+
+        scheduleNextCollectible();
+    }
+}
+
+function scheduleNextGold() {
+    const base = 30000; // 30 seconds
+    const randomBonus = Math.random() * 30000; // 1–30 seconds
+    nextGoldTime = performance.now() + base + randomBonus;
+}
+
+function updateGoldSpawner() {
+    const now = performance.now();
+
+    if (now >= nextGoldTime) {
+
+        // Spawn gold
+        const x = 100 + Math.random() * GAME_W * 0.66;
+        const y = -50;
+
+        collectibles.push(new Collectible("gold", x, y, "straight"));
+
+        scheduleNextGold(); // schedule the next gold spawn
+    }
+}
+
+//Helper function for user inputs
+function handlePointerInput(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / DPR / rect.width;
+  const scaleY = canvas.height / DPR / rect.height;
+
+  const x = (clientX - rect.left) * scaleX;
+  const y = (clientY - rect.top) * scaleY;
+
+  // --- UI BUTTONS FIRST ---
+  for (let btn of uiButtons) {
+    if (btn.screen === gameState && btn.contains(x, y)) {
+      btn.onClick();
+      return; // 🔑 consume input
+    }
+  }
+
+  // --- GAMEPLAY INPUT ---
+  if (gameState !== "gameScreen") return;
+
+  if (!player.canShoot()) return;
+
+  projectiles.push(player.shoot(new Vec(x, y)));
+}
+
+function UIButton(x, y, width, height, color, text, textSize, image, onClick, screen) {
+  this.x = x;
+  this.y = y;
+  this.width = width;
+  this.height = height;
+  this.color = color;
+  this.text = text;
+  this.textSize = textSize;
+  this.image = image;
+  this.onClick = onClick;
+  this.screen = screen;
+
+  this.draw = function() {
+    ctx.fillStyle = this.color;
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `${this.textSize}px pixelPurl`;
+    ctx.fillText(this.text, this.x + this.width / 2, this.y + this.height / 2);
+
+    ctx.strokeStyle = "white";
+    ctx.strokeRect(this.x, this.y, this.width, this.height);
+
+    if (this.image) {
+      ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
+    }
+  };
+    this.contains = function(px, py) {
+    return (
+      px >= this.x &&
+      px <= this.x + this.width &&
+      py >= this.y &&
+      py <= this.y + this.height
+    );
+  };
+}
+
+function createUIButtons() {
+  uiButtons = [
+    new UIButton(
+      GAME_W / 2 - 125, 650, 250, 75, "green",
+      "PLAY", 50, loadedImages.transparencyImg,
+      () => { 
+              gameState = "gameScreen"; 
+              resetGame(); 
+            },
+      "introScreen"
+    ),
+
+    new UIButton(
+      GAME_W / 2 - 125, 350, 250, 75, "green",
+      "PLAY AGAIN?", 30, loadedImages.transparencyImg,
+      () => { 
+              console.log("PLAY AGAIN clicked");
+              resetGame();
+              gameState = "introScreen"; 
+            },
+      "gameOverScreen"
+    ),
+  ];
+}
+
+let uiButtons = [];
+// Main game screen
+function gameScreen(dt) {
+    // SPAWN LOGIC
     spawnTimer += dt;
     while (spawnTimer >= spawnInterval) {
         spawnTimer -= spawnInterval;
@@ -402,17 +710,20 @@ function gameScreen(dt) {
 
     // Spawn extra enemies gradually
     spawnExtraEnemy();
+    updateCollectibleSpawner();
+    updateGoldSpawner();   
 
-    // --- DIFFICULTY SCALING ---
+    // DIFFICULTY SCALING
     difficultyTimer += dt;
     if (difficultyTimer >= difficultyInterval) {
         difficultyTimer = 0;
         maxExtraEnemies += 1;          // allow more extra enemies
         enemyBaseSpeed += enemySpeedIncrease; // faster new enemies
+        enemySpeedMultiplier += 0.04;
         console.log("Difficulty up:", { maxExtraEnemies, enemyBaseSpeed });
     }
 
-    // --- UPDATE LOGIC ---
+    // UPDATE LOGIC
     const allEnemies = [...baseEnemies, ...extraEnemies];
 
     // Update enemies
@@ -441,7 +752,7 @@ function gameScreen(dt) {
     }
 
     // Update explosions (apply damage once)
-    for (let ex of explosions) ex.update(dt, allEnemies);
+    for (let ex of explosions) ex.update(dt, allEnemies, collectibles);
 
     // Cleanup dead enemies
     for (let arr of [baseEnemies, extraEnemies]) {
@@ -452,9 +763,19 @@ function gameScreen(dt) {
             // award points only if explosion killed it
             if (enemy.killedByExplosion) {
                 score += enemy.score;
+
+                floatingTexts.push(
+                    new FloatingText(
+                        `${enemy.score}`,
+                        enemy.pos.x,
+                        enemy.pos.y,
+                        "limegreen"
+                    )
+                    
+                );
             }
 
-            arr.splice(i, 1);                 // now remove it
+            arr.splice(i, 1);
         }
     }
 
@@ -468,10 +789,15 @@ function gameScreen(dt) {
       extraEnemies.length = 0; // empties the array
       gameState = "gameOverScreen";
     }
-    // --- PLAYER UPDATE ---
+
+    collectibles.forEach(c => c.update());
+
+    // Remove off-screen collectibles
+    collectibles = collectibles.filter(c => c.y < canvas.height + 50);
+
     player.cooldownTimer -= dt;
 
-    // --- RENDER ---
+    // RENDER
     ctx.clearRect(0, 0, GAME_W, GAME_H);
 
     // Background
@@ -479,6 +805,12 @@ function gameScreen(dt) {
     ctx.fillRect(0, 0, GAME_W, GAME_H);
 
     ctx.drawImage(loadedImages.bgImg,0,0,GAME_W, GAME_H);
+
+    floatingTexts = floatingTexts.filter(ft => {
+      ft.update();
+      ft.draw(ctx);
+      return ft.opacity > 0;
+    });
 
     // Draw all enemies
     for (let e of allEnemies) e.draw(ctx);
@@ -489,16 +821,19 @@ function gameScreen(dt) {
     // Draw explosions
     for (let ex of explosions) ex.draw(ctx);
 
+    collectibles.forEach(c => c.draw(ctx));
+
     // Draw player
     player.draw(ctx);
     gameStats();
+
 }
 
 function introScreen() {
     ctx.clearRect(0, 0, GAME_W, GAME_H);
 
     ctx.drawImage(loadedImages.introImg,0,0);
-
+/*
     ctx.font = "70px PixelPurl";
     ctx.textAlign = "center";
     ctx.strokeStyle = "white";
@@ -506,28 +841,38 @@ function introScreen() {
     ctx.fillStyle = "black";
     ctx.strokeText("CLICK TO PLAY", GAME_W/2, 700);
     ctx.fillText("CLICK TO PLAY", GAME_W/2, 700);
+*/
+    uiButtons
+      .filter(btn => btn.screen === "introScreen")
+      .forEach(btn => btn.draw());
 }
 
 function gameOverScreen() {
     ctx.clearRect(0, 0, GAME_W, GAME_H);
+
+    ctx.drawImage(loadedImages.gameOverBg,0,0)
     
     ctx.font = "100px PixelPurl";
     ctx.textAlign = "center";
     ctx.strokeStyle = "white";
     ctx.lineWidth = 3;
     ctx.fillStyle = "red";
-    ctx.strokeText("GAME OVER", GAME_W/2, 400);
-    ctx.fillText("GAME OVER", GAME_W/2, 400);
-
+    ctx.strokeText("GAME OVER", GAME_W/2, 175);
+    ctx.fillText("GAME OVER", GAME_W/2, 175);
+/*
     ctx.font = "50px PixelPurl";
     ctx.strokeStyle = "white";
     ctx.lineWidth = 3;
     ctx.fillStyle = "black";
-    ctx.strokeText(`SCORE : ${score}`, GAME_W/2, 550);
-    ctx.fillText(`SCORE : ${score}`, GAME_W/2, 550);
+    ctx.strokeText(`SCORE : ${score}`, GAME_W/2, 375);
+    ctx.fillText(`SCORE : ${score}`, GAME_W/2, 375);
 
-    ctx.strokeText("CLICK RMB TO PLAY AGAIN", GAME_W/2, 600);
-    ctx.fillText("CLICK RMB TO PLAY AGAIN", GAME_W/2, 600);
+    ctx.strokeText("CLICK RMB TO PLAY AGAIN", GAME_W/2, 425);
+    ctx.fillText("CLICK RMB TO PLAY AGAIN", GAME_W/2, 425);
+*/
+    uiButtons
+      .filter(btn => btn.screen === "gameOverScreen")
+      .forEach(btn => btn.draw());
 }
 
 
@@ -540,15 +885,28 @@ function gameOverScreen() {
 
     player = new Player(loadedImages.bombardImg);
 
+    createUIButtons();
+
+    scheduleNextCollectible();
+    scheduleNextGold();
+
     requestAnimationFrame(gameLoop);
 })();
 
-// ---- prevent context menu on right click inside canvas ----
-canvas.addEventListener('contextmenu', e=>e.preventDefault());
 
+canvas.addEventListener("mousedown", (e) => {
+  handlePointerInput(e.clientX, e.clientY);
+});
 
+canvas.addEventListener("touchstart", (e) => {
+  e.preventDefault(); // stop scrolling / zooming
 
+  const touch = e.changedTouches[0];
+  handlePointerInput(touch.clientX, touch.clientY);
+}, { passive: false });
 
+canvas.addEventListener("contextmenu", (e) => {e.preventDefault()});
+/*
 canvas.addEventListener('mousedown', (e) => {
   if (gameState === "introScreen") {
     gameState = "gameScreen";
@@ -567,11 +925,5 @@ canvas.addEventListener('mousedown', (e) => {
   projectiles.push(player.shoot(new Vec(x, y)));
 });
 
-canvas.addEventListener("contextmenu", (e) => {
-  e.preventDefault(); // stop the browser's right-click menu
-  if (gameState === "gameOverScreen") {
-    gameState = "introScreen";
-    resetGame();
-    return;
-  }
-});
+
+*/
