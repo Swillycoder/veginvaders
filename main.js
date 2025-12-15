@@ -859,17 +859,17 @@ function gameOverScreen() {
     ctx.fillStyle = "red";
     ctx.strokeText("GAME OVER", GAME_W/2, 175);
     ctx.fillText("GAME OVER", GAME_W/2, 175);
-/*
+
     ctx.font = "50px PixelPurl";
     ctx.strokeStyle = "white";
     ctx.lineWidth = 3;
     ctx.fillStyle = "black";
-    ctx.strokeText(`SCORE : ${score}`, GAME_W/2, 375);
-    ctx.fillText(`SCORE : ${score}`, GAME_W/2, 375);
+    ctx.strokeText(`SCORE : ${score}`, GAME_W/2, 250);
+    ctx.fillText(`SCORE : ${score}`, GAME_W/2, 250);
 
-    ctx.strokeText("CLICK RMB TO PLAY AGAIN", GAME_W/2, 425);
-    ctx.fillText("CLICK RMB TO PLAY AGAIN", GAME_W/2, 425);
-*/
+    //ctx.strokeText("CLICK RMB TO PLAY AGAIN", GAME_W/2, 425);
+    //ctx.fillText("CLICK RMB TO PLAY AGAIN", GAME_W/2, 425);
+
     uiButtons
       .filter(btn => btn.screen === "gameOverScreen")
       .forEach(btn => btn.draw());
