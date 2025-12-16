@@ -18,7 +18,7 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 let DPR = Math.max(1, window.devicePixelRatio || 1);
 const GAME_W = 600; // internal resolution (fixed for consistent gameplay)
-const GAME_H = 800;
+const GAME_H = 1200;
 
 function resizeCanvas() {
   // Scale canvas to fit window while keeping aspect ratio
